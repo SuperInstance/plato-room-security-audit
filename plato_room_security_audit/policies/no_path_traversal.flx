@@ -1,0 +1,7 @@
+POLICY no_path_traversal {
+    SENSE  traversal_count
+    GUARD   traversal_count > 0
+    ALARM   severity=critical
+    ACTUATE post_audit
+    EMIT    "Path traversal vulnerability detected"
+}
