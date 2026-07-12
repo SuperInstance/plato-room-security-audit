@@ -1,0 +1,10 @@
+name: PLATO Security Audit
+on: pull_request
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: SuperInstance/plato-room-security-audit@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
