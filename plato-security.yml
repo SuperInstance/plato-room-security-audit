@@ -1,0 +1,13 @@
+checks:
+  sql_injection: enabled
+  xss: enabled
+  path_traversal: enabled
+  hardcoded_secrets: enabled
+  command_injection: enabled
+  insecure_random: enabled
+  insecure_crypto: enabled
+  debug_enabled: warn
+  http_not_https: warn
+  disabled_security: warn
+  sensitive_file_exposure: enabled
+  weak_password_hash: enabled
