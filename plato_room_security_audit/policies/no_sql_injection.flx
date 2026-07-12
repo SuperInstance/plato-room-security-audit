@@ -1,0 +1,7 @@
+POLICY no_sql_injection {
+    SENSE  sql_injection_count
+    GUARD   sql_injection_count > 0
+    ALARM   severity=critical
+    ACTUATE block_merge
+    EMIT    "SQL injection vulnerability detected"
+}
