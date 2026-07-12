@@ -1,0 +1,7 @@
+POLICY no_command_injection {
+    SENSE  cmd_injection_count
+    GUARD   cmd_injection_count > 0
+    ALARM   severity=critical
+    ACTUATE block_merge
+    EMIT    "Command injection vulnerability detected"
+}
