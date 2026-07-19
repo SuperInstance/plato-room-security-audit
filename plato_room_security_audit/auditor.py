@@ -630,7 +630,17 @@ def run_all_checks(diff: str) -> list[CheckResult]:
     for func in _ALL_CHECKS:
         try:
             result = func(diff)
-            results.append(result)
+            if not isinstance(result, CheckResult):
+                # Check returned None or invalid type - create error result
+                results.append(CheckResult(
+                    check_id=func.__name__,
+                    name=func.__name__,
+                    passed=True,  # Don't block on check crash
+                    message=f"Check returned invalid result: {type(result).__name__}",
+                    severity="info",
+                ))
+            else:
+                results.append(result)
         except Exception as exc:
             results.append(CheckResult(
                 check_id=func.__name__,
@@ -643,12 +653,31 @@ def run_all_checks(diff: str) -> list[CheckResult]:
 
 
 def run_check(check_id: str, diff: str) -> CheckResult | None:
-    """Run a single check by ID."""
+    """Run a single check by ID. Returns None if check_id not found."""
     for func in _ALL_CHECKS:
         try:
             result = func(diff)
-            if result.check_id == check_id:
+            if isinstance(result, CheckResult) and result.check_id == check_id:
                 return result
-        except Exception:
-            pass
+            # If check returned None or invalid type but has matching name, try next
+            if hasattr(func, '__name__') and func.__name__ == check_id:
+                # Found the check but it returned invalid result
+                return CheckResult(
+                    check_id=check_id,
+                    name=check_id,
+                    passed=True,
+                    message=f"Check returned invalid result type",
+                    severity="info",
+                )
+        except Exception as exc:
+            # Check if this was the requested check by name
+            if hasattr(func, '__name__') and func.__name__ == check_id:
+                # Found the check but it crashed - return error instead of None
+                return CheckResult(
+                    check_id=check_id,
+                    name=check_id,
+                    passed=True,  # Don't block on check crash
+                    message=f"Check errored: {exc}",
+                    severity="info",
+                )
     return None

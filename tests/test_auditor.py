@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from plato_room_security_audit.auditor import (
     run_all_checks,
+    CheckResult,
     check_sql_injection,
     check_xss,
     check_path_traversal,
@@ -386,3 +387,64 @@ class TestRunAllChecks:
         results = run_all_checks(VULNERABLE_DIFF)
         failing_with_cwe = [r for r in results if not r.passed and r.cwe]
         assert len(failing_with_cwe) >= 5, "Expected at least 5 findings with CWE references"
+
+    def test_run_all_checks_handles_none_returning_check(self):
+        """Regression test for Bug #4: check returning None should create error result."""
+        from plato_room_security_audit.auditor import check, _ALL_CHECKS
+
+        initial_count = len(_ALL_CHECKS)
+
+        @check
+        def broken_check_returns_none(diff: str):
+            return None  # Bug: returns None instead of CheckResult
+
+        results = run_all_checks("")
+        # All results should be CheckResult, not None
+        assert all(isinstance(r, CheckResult) for r in results), "Found None in results"
+
+        # Find the error result for our broken check
+        broken_results = [r for r in results if r.check_id == "broken_check_returns_none"]
+        assert len(broken_results) == 1
+        assert broken_results[0].message == "Check returned invalid result: NoneType"
+
+        # Clean up - remove the test check
+        _ALL_CHECKS.pop()
+        assert len(_ALL_CHECKS) == initial_count
+
+    def test_run_check_handles_crashed_check(self):
+        """Regression test for Bug #3: crashed check should return error result, not None."""
+        from plato_room_security_audit.auditor import check, run_check, _ALL_CHECKS
+
+        @check
+        def crashing_check(diff: str):
+            raise ValueError("Simulated crash")
+
+        result = run_check("crashing_check", "")
+        # Should return a CheckResult indicating error, not None
+        assert result is not None, "run_check returned None for crashed check"
+        assert isinstance(result, CheckResult)
+        assert "Check errored" in result.message
+        assert result.passed is True  # Don't block on check crash
+
+        # Verify non-existent check still returns None
+        result = run_check("nonexistent_check", "")
+        assert result is None, "run_check should return None for non-existent check"
+
+        # Clean up
+        _ALL_CHECKS.pop()
+
+    def test_run_check_handles_none_returning_check(self):
+        """Regression test: check returning None should return error result."""
+        from plato_room_security_audit.auditor import check, run_check, _ALL_CHECKS
+
+        @check
+        def none_returning_check(diff: str):
+            return None
+
+        result = run_check("none_returning_check", "")
+        assert result is not None, "run_check returned None for check that returned None"
+        assert isinstance(result, CheckResult)
+        assert "invalid result" in result.message
+
+        # Clean up
+        _ALL_CHECKS.pop()

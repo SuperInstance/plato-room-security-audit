@@ -132,6 +132,86 @@ class TestRoomBasics:
         assert resp["type"] == "ack"
         assert called == [3.0]
 
+    def test_empty_command_returns_error(self):
+        """Regression test for Bug #1: empty command should return error response."""
+        room = BaseRoom()
+        resp = json.loads(room.handle_command(""))
+        assert resp["type"] == "error"
+        assert "empty command" in resp["message"]
+
+    def test_unknown_command_returns_error(self):
+        """Regression test for Bug #1: unknown command should return error response."""
+        room = BaseRoom()
+        resp = json.loads(room.handle_command("unknown_command"))
+        assert resp["type"] == "error"
+        assert "unknown command" in resp["message"]
+
+    def test_history_with_invalid_numeric_returns_error(self):
+        """Regression test for Bug #7: history with non-numeric should return error."""
+        room = BaseRoom()
+        resp = json.loads(room.handle_command("history abc"))
+        assert resp["type"] == "error"
+        assert "invalid history count" in resp["message"]
+
+    def test_actuator_with_invalid_value_returns_error(self):
+        """Regression test for Bug #8: actuator with non-numeric value should return error."""
+        room = BaseRoom()
+        room.register_actuator("test", lambda r, v: None)
+        resp = json.loads(room.handle_command("actuator test abc"))
+        assert resp["type"] == "error"
+        assert "invalid actuator value" in resp["message"]
+
+    def test_alarm_set_with_invalid_cooldown_returns_error(self):
+        """Regression test for Bug #9: alarm set with non-numeric cooldown should return error."""
+        room = BaseRoom()
+        resp = json.loads(room.handle_command("alarm set test1 temp>10 abc"))
+        assert resp["type"] == "error"
+        assert "invalid cooldown" in resp["message"]
+
+    def test_alarm_set_with_invalid_threshold_in_spaced_format(self):
+        """Test that spaced condition with invalid threshold returns error."""
+        room = BaseRoom()
+        # Use spaced format: temp > abc (abc is invalid threshold)
+        # Since command parsing only takes parts[3], we need the full condition in one arg
+        # But with spaces, we can't... so this tests the compact format with invalid threshold
+        resp = json.loads(room.handle_command("alarm set test2 temp>abc.5 60"))
+        assert resp["type"] == "alarm_not_registered"
+        assert "malformed condition" in resp["message"]
+        # Alarm should NOT be registered
+        assert "test2" not in room._alarms
+
+    def test_alarm_set_with_malformed_condition_returns_error(self):
+        """Regression test for Bug #2: malformed condition should return error, not ack."""
+        room = BaseRoom()
+        resp = json.loads(room.handle_command("alarm set test3 temp 60"))
+        assert resp["type"] == "alarm_not_registered"
+        assert "malformed condition" in resp["message"]
+        # Alarm should NOT be registered
+        assert "test3" not in room._alarms
+
+    def test_alarm_set_valid_condition_returns_ack_with_registered_flag(self):
+        """Test that valid alarm set returns ack with registered=True."""
+        room = BaseRoom()
+        # Use condition without spaces: "temp>90"
+        resp = json.loads(room.handle_command("alarm set test4 temp>90 60"))
+        assert resp["type"] == "ack"
+        assert resp.get("registered") is True
+        assert "test4" in room._alarms
+
+    def test_alarm_evaluation_with_non_numeric_threshold_doesnt_crash(self):
+        """Regression test for Bug #10: alarm with non-numeric threshold should not crash."""
+        # Create alarm with string threshold (simulating direct instantiation)
+        alarm = AlarmDef("test", "val > abc", "val", ">", "abc")
+        result = alarm.evaluate({"val": 10.0})
+        # Should return False instead of crashing
+        assert result is False
+
+    def test_alarm_evaluation_with_invalid_operator_doesnt_crash(self):
+        """Test that alarm with invalid operator returns False."""
+        alarm = AlarmDef("test", "val invalid_op 5", "val", "invalid_op", 5.0)
+        result = alarm.evaluate({"val": 10.0})
+        assert result is False
+
 
 class TestSecurityAuditRoom:
     """Test the SecurityAuditRoom specifically."""

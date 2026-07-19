@@ -98,7 +98,14 @@ class GitHubClient:
             return _SAMPLE_DIFF
         path = f"/repos/{owner}/{repo}/pulls/{pr_number}"
         data = self._request("GET", path, accept="application/vnd.github.v3.diff")
-        return data if isinstance(data, str) else str(data)
+        if isinstance(data, str):
+            return data
+        # If data is not a string (e.g., error dict), log and return empty
+        if isinstance(data, dict):
+            logger.warning("GitHub API returned unexpected dict for diff (possibly error): %s", data)
+        else:
+            logger.warning("GitHub API returned unexpected type for diff: %s", type(data).__name__)
+        return ""
 
     def fetch_pr_metadata(self, owner: str, repo: str, pr_number: int) -> dict[str, Any]:
         """Fetch PR metadata including file counts."""

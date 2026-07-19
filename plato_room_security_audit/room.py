@@ -47,6 +47,13 @@ ActuatorFunc = Callable[["BaseRoom", float], None]
 
 
 @dataclass
+class ErrorResponse:
+    """Error response for command failures."""
+    message: str
+    type: str = "error"
+
+
+@dataclass
 class AlarmDef:
     """Declarative alarm definition."""
     alarm_id: str
@@ -63,6 +70,11 @@ class AlarmDef:
         val = sensor_values.get(self.sensor)
         if val is None:
             return False
+        # Ensure threshold is numeric for comparison
+        try:
+            threshold = float(self.threshold)
+        except (ValueError, TypeError):
+            return False
         ops = {
             "<":  lambda a, b: a < b,
             ">":  lambda a, b: a > b,
@@ -74,7 +86,10 @@ class AlarmDef:
         op = ops.get(self.operator)
         if op is None:
             return False
-        return op(val, self.threshold)
+        try:
+            return op(val, threshold)
+        except TypeError:
+            return False
 
 
 class BaseRoom:
@@ -195,14 +210,22 @@ class BaseRoom:
                                "seq": self._seq, "data": data})
 
         if cmd == "history":
-            n = int(parts[1]) if len(parts) > 1 else 10
+            try:
+                n = int(parts[1]) if len(parts) > 1 else 10
+            except ValueError:
+                return json.dumps(asdict(ErrorResponse(
+                    message=f"invalid history count: {parts[1]}")))
             ticks = list(self._history)[-n:]
             return json.dumps({"type": "history", "count": len(ticks),
                                "ticks": ticks})
 
         if cmd == "actuator" and len(parts) >= 2:
             name = parts[1]
-            value = float(parts[2]) if len(parts) > 2 else 1.0
+            try:
+                value = float(parts[2]) if len(parts) > 2 else 1.0
+            except ValueError:
+                return json.dumps(asdict(ErrorResponse(
+                    message=f"invalid actuator value: {parts[2]}")))
             self.actuate(name, value)
             return json.dumps({"type": "ack", "command": "actuator",
                                "name": name, "value": value})
@@ -221,13 +244,42 @@ class BaseRoom:
             if sub == "set" and len(parts) >= 5:
                 aid = parts[2]
                 condition = parts[3]
-                cooldown = int(parts[4])
+                try:
+                    cooldown = int(parts[4])
+                except ValueError:
+                    return json.dumps(asdict(ErrorResponse(
+                        message=f"invalid cooldown: {parts[4]}")))
                 tokens = condition.split()
                 if len(tokens) == 3:
+                    # Format: "SENSOR OPERATOR THRESHOLD" (e.g., "temp > 90")
+                    try:
+                        threshold = float(tokens[2])
+                    except ValueError:
+                        return json.dumps(asdict(ErrorResponse(
+                            message=f"invalid threshold: {tokens[2]}")))
                     self.register_alarm(aid, tokens[0], tokens[1],
-                                        float(tokens[2]), cooldown)
-                return json.dumps({"type": "ack", "command": "alarm set",
-                                   "id": aid})
+                                        threshold, cooldown)
+                    return json.dumps({"type": "ack", "command": "alarm set",
+                                       "id": aid, "registered": True})
+                # Try to parse format without spaces like "temp>90"
+                import re
+                compact_match = re.match(r'^(\w+)([<>=!]+)([-+]?\d*\.?\d+)$', condition)
+                if compact_match:
+                    sensor, operator, threshold_str = compact_match.groups()
+                    try:
+                        threshold = float(threshold_str)
+                    except ValueError:
+                        return json.dumps(asdict(ErrorResponse(
+                            message=f"invalid threshold: {threshold_str}")))
+                    self.register_alarm(aid, sensor, operator,
+                                        threshold, cooldown)
+                    return json.dumps({"type": "ack", "command": "alarm set",
+                                       "id": aid, "registered": True})
+                # Malformed condition - didn't register
+                return json.dumps(asdict(ErrorResponse(
+                    message=f"malformed condition: {condition}. "
+                           f"Expected 'SENSOR OPERATOR THRESHOLD' (e.g., 'temp > 90' or 'temp>90')",
+                    type="alarm_not_registered")))
 
         if cmd == "subscribe":
             return json.dumps({"type": "subscribed", "tick_hz": self.tick_hz})
@@ -562,7 +614,10 @@ def main():
 
     import os
     token = os.environ.get(args.token_env, "")
-    owner, repo = args.repo.split("/")
+    repo_parts = args.repo.split("/")
+    if len(repo_parts) != 2:
+        parser.error(f"--repo must be in 'owner/repo' format, got: {args.repo}")
+    owner, repo = repo_parts
 
     gh = GitHubClient(token)
     room = SecurityAuditRoom(gh, owner, repo, args.pr, args.host, args.port)

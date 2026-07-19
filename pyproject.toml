@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plato-room-security-audit"
-version = "0.1.0"
+version = "0.1.1"
 description = "PLATO Security Audit Room — automated security auditing as an engine block"
 readme = "README.md"
 license = {text = "MIT"}
