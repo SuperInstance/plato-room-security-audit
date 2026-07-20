@@ -635,7 +635,7 @@ def run_all_checks(diff: str) -> list[CheckResult]:
                 results.append(CheckResult(
                     check_id=func.__name__,
                     name=func.__name__,
-                    passed=True,  # Don't block on check crash
+                    passed=False,  # Failed-safe: block on check crash
                     message=f"Check returned invalid result: {type(result).__name__}",
                     severity="info",
                 ))
@@ -645,7 +645,7 @@ def run_all_checks(diff: str) -> list[CheckResult]:
             results.append(CheckResult(
                 check_id=func.__name__,
                 name=func.__name__,
-                passed=True,  # Don't block on check crash
+                passed=False,  # Failed-safe: block on check crash
                 message=f"Check errored: {exc}",
                 severity="info",
             ))
@@ -676,7 +676,7 @@ def run_check(check_id: str, diff: str) -> CheckResult | None:
                 return CheckResult(
                     check_id=check_id,
                     name=check_id,
-                    passed=True,  # Don't block on check crash
+                    passed=False,  # Failed-safe: block on check crash
                     message=f"Check errored: {exc}",
                     severity="info",
                 )
